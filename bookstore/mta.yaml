@@ -1,0 +1,49 @@
+_schema-version: '3.1'
+ID: bookstore
+version: 1.0.0
+description: "A simple CAP project"
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npx cds build --production
+        - cp apt.yml gen/srv/
+        - cp .puppeteerrc.cjs gen/srv/
+        - npx rimraf gen/srv/node_modules
+        - npx rimraf gen/srv/.cache
+modules:
+  - name: bookstore-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      memory: 1024M
+      disk-quota: 2048M
+      buildpacks:
+        - https://github.com/cloudfoundry/apt-buildpack
+        - nodejs_buildpack
+      readiness-health-check-type: http
+      readiness-health-check-http-endpoint: /health
+    build-parameters:
+      ignore: ["node_modules/", "package-lock.json"]
+      builder: custom
+      commands:
+        - echo "Building CAP service"
+    provides:
+      - name: srv-api # required by consumers of CAP services (e.g. approuter)
+        properties:
+          srv-url: ${default-url}
+    requires:
+      - name: bookstore-auth
+
+resources:
+  - name: bookstore-auth
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: bookstore-${org}-${space}
+        tenant-mode: dedicated
